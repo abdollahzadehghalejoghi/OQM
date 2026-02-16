@@ -206,6 +206,19 @@ func (s *Server) handleUser(w http.ResponseWriter, r *http.Request) {
 		s.jsonResponse(w, map[string]string{"status": "success"})
 
 	case "DELETE":
+		// Get nftables manager
+		cfg := s.storage.GetConfig()
+		nftMgr := nft.NewManager(cfg.NFTablesTable)
+
+		// Remove from nftables first (monitoring and blocking)
+		if err := nftMgr.RemoveMonitoredIP(ip); err != nil {
+			logger.Error("Failed to remove IP from nftables monitoring: %v", err)
+		}
+		if err := nftMgr.UnblockIP(ip); err != nil {
+			logger.Error("Failed to unblock IP: %v", err)
+		}
+
+		// Remove from storage
 		if err := s.storage.RemoveUser(ip); err != nil {
 			s.errorResponse(w, err.Error(), http.StatusNotFound)
 			return

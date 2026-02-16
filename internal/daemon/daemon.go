@@ -321,7 +321,7 @@ func (d *Daemon) checkAndUpdate() error {
 
 			// Still check quota for blocked users (they might need auto-unblock)
 			if user.IsBlocked {
-				if user.Username != "" && user.Username != "-" {
+				if user.Username != "" && user.Username != "-" && user.GroupQuotaMB > 0 {
 					if !checkedGroups[user.Username] {
 						d.checkQuota(user)
 						checkedGroups[user.Username] = true
@@ -370,14 +370,14 @@ func (d *Daemon) checkAndUpdate() error {
 		if shouldCheckQuota {
 			updatedUser, _ := d.storage.GetUser(user.IP)
 			if updatedUser != nil {
-				// For grouped users, only check quota once per group
-				if updatedUser.Username != "" && updatedUser.Username != "-" {
+				// For grouped users (with group quota), only check quota once per group
+				if updatedUser.Username != "" && updatedUser.Username != "-" && updatedUser.GroupQuotaMB > 0 {
 					if !checkedGroups[updatedUser.Username] {
 						d.checkQuota(updatedUser)
 						checkedGroups[updatedUser.Username] = true
 					}
 				} else {
-					// Individual user - always check
+					// Individual user (no group quota) - always check
 					d.checkQuota(updatedUser)
 				}
 			}
