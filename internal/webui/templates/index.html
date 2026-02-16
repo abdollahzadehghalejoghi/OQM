@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OQM - OpenWrt Quota Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .card {
+            @apply bg-white rounded-lg shadow-md p-6;
+        }
+        .status-active {
+            @apply bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold;
+        }
+        .status-blocked {
+            @apply bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-semibold;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-blue-600 text-white shadow-lg">
+            <div class="container mx-auto px-4 py-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-3xl font-bold">OQM Dashboard</h1>
+                        <p class="text-blue-100">OpenWrt Quota Manager</p>
+                    </div>
+                    <button onclick="showSettingsModal()" class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                        ⚙️ Settings
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container mx-auto px-4 py-8">
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="card">
+                    <h3 class="text-gray-500 text-sm font-semibold uppercase">Total Users</h3>
+                    <p class="text-3xl font-bold text-gray-800 mt-2" id="total-users">0</p>
+                </div>
+                <div class="card">
+                    <h3 class="text-gray-500 text-sm font-semibold uppercase">Active Users</h3>
+                    <p class="text-3xl font-bold text-green-600 mt-2" id="active-users">0</p>
+                </div>
+                <div class="card">
+                    <h3 class="text-gray-500 text-sm font-semibold uppercase">Blocked Users</h3>
+                    <p class="text-3xl font-bold text-red-600 mt-2" id="blocked-users">0</p>
+                </div>
+                <div class="card">
+                    <h3 class="text-gray-500 text-sm font-semibold uppercase">Total Traffic</h3>
+                    <p class="text-3xl font-bold text-blue-600 mt-2" id="total-traffic">0 GB</p>
+                </div>
+            </div>
+
+            <!-- Users Table -->
+            <div class="card">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Users</h2>
+                    <div class="flex gap-2">
+                        <button onclick="manualRefresh()" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 flex items-center gap-2" id="refreshBtn">
+                            <span>🔄</span>
+                            <span>Refresh</span>
+                        </button>
+                        <button onclick="showDHCPModal()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                            📡 DHCP Clients
+                        </button>
+                        <button onclick="showAddUserModal()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                            + Add User
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Connection</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP / MAC</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quota</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">⬇️ Download</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">⬆️ Upload</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage %</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Users will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Top Users Chart -->
+            <div class="card mt-8">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Top Users by Traffic</h2>
+                <canvas id="topUsersChart" height="80"></canvas>
+            </div>
+        </main>
+    </div>
+
+    <!-- DHCP Clients Modal -->
+    <div id="dhcpModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+        <div class="relative top-10 mx-auto p-5 border w-3/4 max-w-4xl shadow-lg rounded-md bg-white">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold">DHCP Clients</h3>
+                <button onclick="hideDHCPModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            <div class="overflow-x-auto max-h-96">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">IP</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">MAC</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Hostname</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Expires</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dhcp-table-body" class="bg-white divide-y divide-gray-200">
+                        <tr>
+                            <td colspan="5" class="px-4 py-4 text-center text-gray-500">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit User Modal -->
+    <div id="addUserModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+            <h3 class="text-lg font-bold mb-4" id="modalTitle">Add New User</h3>
+            <form id="addUserForm" onsubmit="addUser(event)">
+                <input type="hidden" name="editMode" id="editMode" value="false">
+                <input type="hidden" name="originalIP" id="originalIP" value="">
+
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Identifier Type</label>
+                    <select id="identifierType" onchange="toggleIdentifierInputs()" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700">
+                        <option value="ip">By IP Address</option>
+                        <option value="mac">By MAC Address</option>
+                    </select>
+                </div>
+
+                <div class="mb-4" id="ipField">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">IP Address *</label>
+                    <input type="text" name="ip" id="ipInput" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700">
+                </div>
+                <div class="mb-4" id="macField" style="display: none;">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">MAC Address *</label>
+                    <input type="text" name="mac" id="macInput" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Name</label>
+                    <input type="text" name="name" id="nameInput" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Username (for grouping)</label>
+                    <div class="flex gap-2">
+                        <select id="usernameSelect" onchange="handleUsernameSelect()" class="shadow appearance-none border rounded w-2/3 py-2 px-3 text-gray-700">
+                            <option value="">-- Create new or select existing --</option>
+                        </select>
+                        <input type="text" name="username" id="usernameInput" placeholder="Or type new username" class="shadow appearance-none border rounded w-1/3 py-2 px-3 text-gray-700">
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Select existing group or type new username to create a group</p>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Device Quota (MB, 0 = unlimited)</label>
+                    <input type="number" name="quota_mb" id="quotaInput" value="1024" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700">
+                    <p class="text-xs text-gray-500 mt-1">Quota for THIS device only</p>
+                </div>
+                <div class="mb-4" id="groupQuotaField" style="display: none;">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Group Quota (MB, 0 = unlimited)</label>
+                    <input type="number" name="group_quota_mb" id="groupQuotaInput" value="0" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700">
+                    <p class="text-xs text-gray-500 mt-1">Shared quota for ALL devices in this group</p>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Device Telegram Chat ID (Optional)</label>
+                    <input type="text" name="telegram_chat_id" id="telegramInput" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700">
+                    <p class="text-xs text-gray-500 mt-1">Notifications for THIS device</p>
+                </div>
+                <div class="mb-4" id="groupTelegramField" style="display: none;">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Group Telegram Chat ID (Optional)</label>
+                    <input type="text" name="group_telegram_chat_id" id="groupTelegramInput" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700">
+                    <p class="text-xs text-gray-500 mt-1">Notifications for ALL devices in this group</p>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="hideAddUserModal()" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" id="submitBtn">Add User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-gray-800">⚙️ Settings</h3>
+                <button onclick="hideSettingsModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+
+            <form id="settingsForm" onsubmit="saveSettings(event)" class="space-y-6">
+                <!-- General Settings -->
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h4 class="text-lg font-semibold text-gray-700 mb-4">🔧 General</h4>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Check Interval (seconds)</label>
+                            <input type="number" name="check_interval" id="setting_check_interval" value="60"
+                                   class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
+                                   min="10" max="300">
+                            <p class="text-xs text-gray-500 mt-1">How often to check traffic (10-300 seconds)</p>
+                        </div>
+
+                        <div>
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Web Port</label>
+                            <input type="number" name="web_port" id="setting_web_port" value="8080"
+                                   class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
+                                   min="1024" max="65535">
+                            <p class="text-xs text-gray-500 mt-1">Web UI port (requires restart)</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Reset Schedule</label>
+                        <select name="reset_schedule" id="setting_reset_schedule"
+                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700">
+                            <option value="daily">Daily (every 24 hours)</option>
+                            <option value="weekly">Weekly (every 7 days)</option>
+                            <option value="monthly" selected>Monthly (1st of each month)</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">When to automatically reset user quotas</p>
+                    </div>
+                </div>
+
+                <!-- Bot Settings -->
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h4 class="text-lg font-semibold text-gray-700 mb-4">📱 Bot Notifications</h4>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Bot Type</label>
+                        <select name="bot_type" id="setting_bot_type" onchange="handleBotTypeChange()"
+                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700">
+                            <option value="telegram">Telegram</option>
+                            <option value="bale">Bale</option>
+                            <option value="custom">Custom API Endpoint</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Choose which messaging platform to use for notifications</p>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Bot Token</label>
+                        <input type="text" name="bot_token" id="setting_bot_token"
+                               placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+                               class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 font-mono text-sm">
+                        <p class="text-xs text-gray-500 mt-1" id="bot_token_help">
+                            Get from <a href="https://t.me/botfather" target="_blank" class="text-blue-600 hover:underline">@BotFather</a>
+                        </p>
+                    </div>
+
+                    <div class="mb-4" id="custom_api_field" style="display: none;">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Custom API Base URL</label>
+                        <input type="text" name="bot_api_base_url" id="setting_bot_api_base_url"
+                               placeholder="https://api.example.com"
+                               class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 font-mono text-sm">
+                        <p class="text-xs text-gray-500 mt-1">Telegram-compatible API endpoint (leave empty for default)</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Admin Chat ID</label>
+                        <div class="flex gap-2">
+                            <input type="text" name="admin_chat_id" id="setting_admin_chat_id"
+                                   placeholder="123456789"
+                                   class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 font-mono text-sm flex-1">
+                            <button type="button" onclick="testBotConnection()"
+                                    class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center gap-2 whitespace-nowrap"
+                                    id="testBotBtn">
+                                <span>📱</span>
+                                <span>Test</span>
+                            </button>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1" id="admin_chat_id_help">
+                            Get from <a href="https://t.me/userinfobot" target="_blank" class="text-blue-600 hover:underline">@userinfobot</a>
+                        </p>
+                    </div>
+
+                    <div class="mt-4 bg-blue-50 border border-blue-200 rounded p-3">
+                        <p class="text-sm text-blue-800 font-semibold">📢 Dual Notification Mode</p>
+                        <p class="text-xs text-blue-600 mt-1">When Admin Chat ID is configured, notifications are sent to <strong>both</strong> the user/group AND the admin simultaneously. This ensures the admin receives all events while users also get their own notifications.</p>
+                    </div>
+
+                    <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                        <p class="text-sm text-blue-800">
+                            <strong>💡 Tip:</strong> Notifications will be sent when:
+                        </p>
+                        <ul class="text-xs text-blue-700 mt-2 ml-4 list-disc">
+                            <li>User reaches 80% of quota (warning)</li>
+                            <li>User quota exceeded (blocked)</li>
+                            <li>System events (daemon start/stop, resets)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Advanced Settings -->
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h4 class="text-lg font-semibold text-gray-700 mb-4">🔬 Advanced</h4>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Data Directory</label>
+                            <input type="text" name="data_dir" id="setting_data_dir" value="/etc/oqm" readonly
+                                   class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 font-mono text-sm">
+                        </div>
+
+                        <div>
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Log File</label>
+                            <input type="text" name="log_file" id="setting_log_file" value="/var/log/oqm.log" readonly
+                                   class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 font-mono text-sm">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex justify-between items-center pt-4 border-t">
+                    <button type="button" onclick="resetAllUsage()"
+                            class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">
+                        🔄 Reset All Usage
+                    </button>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="hideSettingsModal()"
+                                class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                            💾 Save Settings
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let topUsersChart = null;
+        let expandedGroups = new Set(); // Track which groups are expanded
+        let refreshInterval = null;
+
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            loadStats();
+            loadUsers();
+            loadSettings(); // Load current settings
+
+            // Get check interval from config and use it for UI refresh
+            const config = await fetchConfig();
+            const checkInterval = (config?.check_interval || 60) * 1000; // Convert to milliseconds
+
+            // Set refresh interval based on config
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+            refreshInterval = setInterval(() => {
+                loadStats();
+                loadUsers();
+            }, checkInterval);
+
+            console.log(`UI refresh interval set to ${checkInterval/1000} seconds (same as check_interval)`);
+        });
+
+        async function fetchConfig() {
+            try {
+                const response = await fetch(`${API_BASE}/api/config`);
+                return await response.json();
+            } catch (error) {
+                console.error('Failed to fetch config:', error);
+                return null;
+            }
+        }
+
+        async function manualRefresh() {
+            const btn = document.getElementById('refreshBtn');
+            const originalHTML = btn.innerHTML;
+
+            // Show loading state
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-spin">⟳</span> <span>Refreshing...</span>';
+
+            try {
+                await Promise.all([
+                    loadStats(),
+                    loadUsers()
+                ]);
+            } finally {
+                // Restore button
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/api/stats`);
+                const stats = await response.json();
+
+                document.getElementById('total-users').textContent = stats.total_users;
+                document.getElementById('active-users').textContent = stats.active_users;
+                document.getElementById('blocked-users').textContent = stats.blocked_users;
+                document.getElementById('total-traffic').textContent = formatBytes(stats.total_traffic);
+
+                // Update chart
+                updateTopUsersChart(stats.top_users || []);
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const response = await fetch(`${API_BASE}/api/users`);
+                const users = await response.json();
+
+                const tbody = document.getElementById('users-table-body');
+                tbody.innerHTML = '';
+
+                // Group users by username (for multi-device users)
+                const grouped = {};
+                const standalone = [];
+
+                users.forEach(user => {
+                    if (user.username && user.username.trim() !== '') {
+                        if (!grouped[user.username]) {
+                            grouped[user.username] = [];
+                        }
+                        grouped[user.username].push(user);
+                    } else {
+                        standalone.push(user);
+                    }
+                });
+
+                // Render grouped users
+                Object.keys(grouped).sort().forEach(username => {
+                    const devices = grouped[username];
+                    const groupId = 'group-' + username.replace(/[^a-zA-Z0-9]/g, '-');
+
+                    // Calculate totals for the group
+                    let totalRx = 0, totalTx = 0, totalQuota = 0;
+                    let anyBlocked = false;
+                    let anyOnline = false;
+
+                    devices.forEach(d => {
+                        totalRx += d.rx_bytes;
+                        totalTx += d.tx_bytes;
+                        totalQuota = Math.max(totalQuota, d.group_quota_mb || 0); // Use GROUP quota
+                        if (d.is_blocked) anyBlocked = true;
+                        if (d.is_online) anyOnline = true; // Backend provides online status
+                    });
+
+                    const totalBytes = totalRx + totalTx;
+                    // Group quota: all devices share the same quota limit
+                    const usagePercent = totalQuota > 0 ? (totalBytes / (totalQuota * 1024 * 1024) * 100).toFixed(1) : 0;
+                    const statusClass = anyBlocked ? 'status-blocked' : 'status-active';
+                    const statusText = anyBlocked ? 'Blocked' : 'Active';
+                    const quotaText = totalQuota > 0 ? `${totalQuota} MB (group)` : 'Unlimited';
+                    const onlineStatus = anyOnline ? '<span class="text-green-600">🟢 Online</span>' : '<span class="text-gray-400">⚫ Offline</span>';
+
+                    // Parent row (summary)
+                    const parentRow = document.createElement('tr');
+                    parentRow.className = 'bg-blue-50 font-semibold cursor-pointer hover:bg-blue-100';
+                    parentRow.onclick = () => toggleGroup(groupId);
+                    parentRow.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">${onlineStatus}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <div class="font-bold flex items-center gap-2">
+                                <span id="${groupId}-icon">▶</span>
+                                <span>${username}</span>
+                                <span class="text-xs bg-blue-200 px-2 py-0.5 rounded">${devices.length} devices</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">Group Total</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${quotaText}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">⬇️ ${formatBytes(totalRx)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold">⬆️ ${formatBytes(totalTx)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">${formatBytes(totalBytes)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${Math.min(usagePercent, 100)}%"></div>
+                            </div>
+                            <span class="text-xs text-gray-500">${usagePercent}%</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="${statusClass}">${statusText}</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium" onclick="event.stopPropagation()">
+                            <button onclick="editGroup('${username}')" class="text-blue-600 hover:text-blue-900">Edit Group</button>
+                        </td>
+                    `;
+                    tbody.appendChild(parentRow);
+
+                    // Child rows (individual devices) - hidden by default
+                    devices.forEach(device => {
+                        const deviceRow = renderUserRow(device, groupId);
+                        tbody.appendChild(deviceRow);
+                    });
+                });
+
+                // Render standalone users
+                standalone.forEach(user => {
+                    const row = renderUserRow(user, null);
+                    tbody.appendChild(row);
+                });
+
+                // Restore expanded state
+                expandedGroups.forEach(groupId => {
+                    const devices = document.querySelectorAll(`.${groupId}-device`);
+                    const icon = document.getElementById(`${groupId}-icon`);
+                    devices.forEach(device => device.classList.remove('hidden'));
+                    if (icon) icon.textContent = '▼';
+                });
+            } catch (error) {
+                console.error('Failed to load users:', error);
+            }
+        }
+
+        function renderUserRow(user, groupId) {
+            const row = document.createElement('tr');
+            const totalBytes = user.rx_bytes + user.tx_bytes;
+            const usagePercent = user.quota_mb > 0 ? (totalBytes / (user.quota_mb * 1024 * 1024) * 100).toFixed(1) : 0;
+            const statusClass = user.is_blocked ? 'status-blocked' : 'status-active';
+            const statusText = user.is_blocked ? 'Blocked' : 'Active';
+            const quotaText = user.quota_mb > 0 ? `${user.quota_mb} MB` : 'Unlimited';
+
+            // Detect identifier type - show only IP or MAC, not both
+            const isMACBased = user.ip === '0.0.0.0' || user.ip === '';
+            const isIPBased = user.mac === '00:00:00:00:00:00' || user.mac === '';
+
+            // Online status is provided by backend (based on DHCP leases)
+            const isOnline = user.is_online || false;
+            const onlineStatus = isOnline ? '<span class="text-green-600">🟢 Online</span>' : '<span class="text-gray-400">⚫ Offline</span>';
+
+            let identifierDisplay = '';
+            if (isMACBased) {
+                // MAC-based user - show only MAC
+                identifierDisplay = `<div class="font-medium">${user.mac}</div>`;
+            } else if (isIPBased) {
+                // IP-based user - show only IP
+                identifierDisplay = `<div class="font-medium">${user.ip}</div>`;
+            } else {
+                // Both are set (shouldn't happen normally) - show both
+                identifierDisplay = `
+                    <div class="font-medium">${user.ip}</div>
+                    <div class="text-xs text-gray-500">${user.mac}</div>
+                `;
+            }
+
+            if (groupId) {
+                row.className = `${groupId}-device hidden bg-gray-50`;
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm pl-12">${onlineStatus}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 pl-12">
+                        ${identifierDisplay}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${user.name || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-xs">
+                        ${quotaText}
+                        <div class="text-gray-400">(device)</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600">⬇️ ${formatBytes(user.rx_bytes)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600">⬆️ ${formatBytes(user.tx_bytes)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${formatBytes(totalBytes)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div class="bg-gray-400 h-2.5 rounded-full" style="width: ${Math.min(usagePercent, 100)}%"></div>
+                        </div>
+                        <span class="text-xs text-gray-500">${usagePercent}%</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="${statusClass}">${statusText}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        ${user.is_blocked
+                            ? '<button onclick="toggleBlock(\''+user.ip+'\', false)" class="text-green-600 hover:text-green-900">Activate</button>'
+                            : '<button onclick="toggleBlock(\''+user.ip+'\', true)" class="text-orange-600 hover:text-orange-900">Deactivate</button>'
+                        }
+                        <button onclick="editUser('${user.ip}')" class="text-blue-600 hover:text-blue-900 ml-2">Edit</button>
+                        <button onclick="deleteUser('${user.ip}')" class="text-red-600 hover:text-red-900 ml-2">Delete</button>
+                    </td>
+                `;
+            } else {
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">${onlineStatus}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        ${identifierDisplay}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.name || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${quotaText}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">⬇️ ${formatBytes(user.rx_bytes)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold">⬆️ ${formatBytes(user.tx_bytes)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">${formatBytes(totalBytes)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${Math.min(usagePercent, 100)}%"></div>
+                        </div>
+                        <span class="text-xs text-gray-500">${usagePercent}%</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="${statusClass}">${statusText}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        ${user.is_blocked
+                            ? '<button onclick="toggleBlock(\''+user.ip+'\', false)" class="text-green-600 hover:text-green-900">Activate</button>'
+                            : '<button onclick="toggleBlock(\''+user.ip+'\', true)" class="text-orange-600 hover:text-orange-900">Deactivate</button>'
+                        }
+                        <button onclick="editUser('${user.ip}')" class="text-blue-600 hover:text-blue-900 ml-2">Edit</button>
+                        <button onclick="deleteUser('${user.ip}')" class="text-red-600 hover:text-red-900 ml-2">Delete</button>
+                    </td>
+                `;
+            }
+
+            return row;
+        }
+
+        function toggleGroup(groupId) {
+            const devices = document.querySelectorAll(`.${groupId}-device`);
+            const icon = document.getElementById(`${groupId}-icon`);
+            const isHidden = devices[0] && devices[0].classList.contains('hidden');
+
+            devices.forEach(device => {
+                if (isHidden) {
+                    device.classList.remove('hidden');
+                    expandedGroups.add(groupId); // Remember it's expanded
+                } else {
+                    device.classList.add('hidden');
+                    expandedGroups.delete(groupId); // Remember it's collapsed
+                }
+            });
+
+            if (icon) {
+                icon.textContent = isHidden ? '▼' : '▶';
+            }
+        }
+
+        function updateTopUsersChart(topUsers) {
+            const ctx = document.getElementById('topUsersChart').getContext('2d');
+            const labels = topUsers.map(u => u.name || u.ip);
+            const downloadData = topUsers.map(u => u.rx_bytes / (1024 * 1024)); // Download in MB
+            const uploadData = topUsers.map(u => u.tx_bytes / (1024 * 1024));   // Upload in MB
+
+            if (topUsersChart) {
+                topUsersChart.destroy();
+            }
+
+            topUsersChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '⬇️ Download (MB)',
+                            data: downloadData,
+                            backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                            borderColor: 'rgba(34, 197, 94, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '⬆️ Upload (MB)',
+                            data: uploadData,
+                            backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        x: {
+                            stacked: false
+                        },
+                        y: {
+                            stacked: false,
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Traffic (MB)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                footer: function(tooltipItems) {
+                                    let total = 0;
+                                    tooltipItems.forEach(item => {
+                                        total += item.parsed.y;
+                                    });
+                                    return 'Total: ' + total.toFixed(2) + ' MB';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function showAddUserModal() {
+            // Reset form to default state
+            document.getElementById('addUserForm').reset();
+            document.getElementById('modalTitle').textContent = 'Add New User';
+            document.getElementById('editMode').value = 'false';
+            document.getElementById('originalIP').value = '';
+            document.getElementById('submitBtn').textContent = 'Add User';
+
+            // Enable all fields
+            document.getElementById('identifierType').disabled = false;
+            document.getElementById('ipInput').disabled = false;
+            document.getElementById('macInput').disabled = false;
+            document.getElementById('nameInput').disabled = false;
+            document.getElementById('usernameInput').disabled = false;
+
+            // Show all fields (reset visibility)
+            document.getElementById('identifierType').closest('.mb-4').style.display = 'block';
+            document.getElementById('ipField').style.display = 'block';
+            document.getElementById('macField').style.display = 'none'; // MAC hidden by default
+            document.getElementById('nameInput').closest('.mb-4').style.display = 'block';
+            document.getElementById('usernameInput').closest('.mb-4').style.display = 'block';
+            document.getElementById('quotaInput').closest('.mb-4').style.display = 'block';
+            document.getElementById('telegramInput').closest('.mb-4').style.display = 'block';
+
+            // Hide group fields by default
+            document.getElementById('groupQuotaField').style.display = 'none';
+            document.getElementById('groupTelegramField').style.display = 'none';
+
+            // Remove group edit info if exists
+            const groupEditInfo = document.getElementById('groupEditInfo');
+            if (groupEditInfo) groupEditInfo.remove();
+
+            document.getElementById('addUserModal').classList.remove('hidden');
+            await loadUsernamesDropdown();
+        }
+
+        async function loadUsernamesDropdown() {
+            try {
+                const response = await fetch(`${API_BASE}/api/usernames`);
+                const usernames = await response.json();
+
+                const select = document.getElementById('usernameSelect');
+                // Clear existing options except first one
+                select.innerHTML = '<option value="">-- Create new or select existing --</option>';
+
+                // Add existing usernames (check if array is not null/empty)
+                if (usernames && Array.isArray(usernames) && usernames.length > 0) {
+                    usernames.forEach(username => {
+                        const option = document.createElement('option');
+                        option.value = username;
+                        option.textContent = username;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load usernames:', error);
+            }
+        }
+
+        function handleUsernameSelect() {
+            const select = document.getElementById('usernameSelect');
+            const input = document.getElementById('usernameInput');
+            const editMode = document.getElementById('editMode').value;
+
+            if (select.value) {
+                // User selected existing username
+                input.value = select.value;
+                input.disabled = true;
+
+                // Only show group fields in ADD mode, NOT in edit mode
+                // In edit mode, use "Edit Group" button to edit group settings
+                if (editMode === 'false') {
+                    document.getElementById('groupQuotaField').style.display = 'block';
+                    document.getElementById('groupTelegramField').style.display = 'block';
+                    autoFillGroupSettings(select.value);
+                }
+            } else {
+                // User wants to create new
+                input.disabled = false;
+                input.value = '';
+
+                // Hide group fields
+                document.getElementById('groupQuotaField').style.display = 'none';
+                document.getElementById('groupTelegramField').style.display = 'none';
+            }
+        }
+
+        async function autoFillGroupSettings(username) {
+            try {
+                const response = await fetch(`${API_BASE}/api/users`);
+                const users = await response.json();
+
+                // Find first user with this username
+                const groupUser = users.find(u => u.username === username);
+                if (groupUser) {
+                    document.getElementById('quotaInput').value = groupUser.quota_mb || 0;
+                    document.getElementById('groupQuotaInput').value = groupUser.group_quota_mb || 0;
+                    document.getElementById('telegramInput').value = groupUser.telegram_chat_id || '';
+                    document.getElementById('groupTelegramInput').value = groupUser.group_telegram_chat_id || '';
+                }
+            } catch (error) {
+                console.error('Failed to load group settings:', error);
+            }
+        }
+
+        function hideAddUserModal() {
+            document.getElementById('addUserModal').classList.add('hidden');
+            document.getElementById('addUserForm').reset();
+            document.getElementById('modalTitle').textContent = 'Add New User';
+            document.getElementById('editMode').value = 'false';
+            document.getElementById('originalIP').value = '';
+            document.getElementById('submitBtn').textContent = 'Add User';
+            document.getElementById('identifierType').disabled = false;
+            document.getElementById('ipInput').disabled = false;
+            document.getElementById('macInput').disabled = false;
+            document.getElementById('nameInput').disabled = false;
+            document.getElementById('usernameInput').disabled = false;
+            document.getElementById('usernameSelect').value = '';
+
+            // Hide group fields
+            document.getElementById('groupQuotaField').style.display = 'none';
+            document.getElementById('groupTelegramField').style.display = 'none';
+
+            // Remove group edit info if exists
+            const groupEditInfo = document.getElementById('groupEditInfo');
+            if (groupEditInfo) groupEditInfo.remove();
+
+            toggleIdentifierInputs(); // Reset to default (IP)
+        }
+
+        async function addUser(event) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+            const editMode = formData.get('editMode');
+            const originalIP = formData.get('originalIP');
+
+            // Get identifier type
+            const identifierType = document.getElementById('identifierType').value;
+            let ip = formData.get('ip');
+            let mac = formData.get('mac');
+
+            // Only save the selected identifier
+            if (identifierType === 'ip' && editMode !== 'true' && editMode !== 'group') {
+                // IP-based: clear MAC
+                mac = '00:00:00:00:00:00';
+            } else if (identifierType === 'mac' && editMode !== 'true' && editMode !== 'group') {
+                // MAC-based: set IP to placeholder (will be resolved via ARP)
+                ip = '0.0.0.0';
+            }
+
+            // Get username from dropdown first, fallback to input
+            let username = document.getElementById('usernameSelect').value;
+            if (!username || username === '') {
+                // Dropdown is empty, use input field
+                username = formData.get('username') || '';
+            }
+
+            const userData = {
+                name: formData.get('name') || '',
+                username: username,  // Use the value we determined above
+                quota_mb: parseInt(formData.get('quota_mb')) || 0,
+                telegram_chat_id: formData.get('telegram_chat_id') || ''
+            };
+
+            // Only include group fields if editing a group OR if username is set (new group member)
+            // Don't send group fields when editing individual device
+            if (editMode === 'group' || (editMode !== 'true' && userData.username !== '')) {
+                userData.group_quota_mb = parseInt(formData.get('group_quota_mb')) || 0;
+                userData.group_telegram_chat_id = formData.get('group_telegram_chat_id') || '';
+            }
+
+            try {
+                if (editMode === 'group') {
+                    // Edit group - update all devices in this group
+                    const groupUsername = originalIP; // We stored username in originalIP
+
+                    // Get all users
+                    const response = await fetch(`${API_BASE}/api/users`);
+                    const users = await response.json();
+
+                    // Find all users in this group
+                    const groupUsers = users.filter(u => u.username === groupUsername);
+
+                    // Update each user with GROUP settings only
+                    for (const user of groupUsers) {
+                        const updateResponse = await fetch(`${API_BASE}/api/users/${user.ip}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                group_quota_mb: userData.group_quota_mb,
+                                group_telegram_chat_id: userData.group_telegram_chat_id
+                            })
+                        });
+
+                        if (!updateResponse.ok) {
+                            console.error(`Failed to update ${user.ip}`);
+                        }
+                    }
+
+                    alert(`Group settings updated for ${groupUsers.length} devices`);
+                } else if (editMode === 'true') {
+                    // Edit existing user
+                    const response = await fetch(`${API_BASE}/api/users/${originalIP}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(userData)
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        alert(`Error: ${error.error}`);
+                        return;
+                    }
+                } else {
+                    // Add new user
+                    const user = {
+                        ip: ip,
+                        mac: mac,
+                        ...userData,
+                        rx_bytes: 0,
+                        tx_bytes: 0,
+                        is_blocked: false
+                    };
+
+                    const response = await fetch(`${API_BASE}/api/users`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(user)
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        alert(`Error: ${error.error}`);
+                        return;
+                    }
+                }
+
+                hideAddUserModal();
+                loadUsers();
+                loadStats();
+            } catch (error) {
+                console.error('Failed to save user:', error);
+                alert('Failed to save user');
+            }
+        }
+
+        function toggleIdentifierInputs() {
+            const type = document.getElementById('identifierType').value;
+            const ipField = document.getElementById('ipField');
+            const macField = document.getElementById('macField');
+            const ipInput = document.getElementById('ipInput');
+            const macInput = document.getElementById('macInput');
+
+            if (type === 'ip') {
+                ipField.style.display = 'block';
+                macField.style.display = 'none';
+                ipInput.required = true;
+                macInput.required = false;
+                // Only set placeholder if MAC is empty
+                if (!macInput.value || macInput.value === '0.0.0.0') {
+                    macInput.value = '00:00:00:00:00:00';
+                }
+            } else {
+                ipField.style.display = 'none';
+                macField.style.display = 'block';
+                ipInput.required = false;
+                macInput.required = true;
+                // Only set placeholder if IP is empty
+                if (!ipInput.value || ipInput.value === '00:00:00:00:00:00') {
+                    ipInput.value = '0.0.0.0';
+                }
+            }
+        }
+
+        async function editUser(ip) {
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${ip}`);
+                if (!response.ok) {
+                    alert('Failed to load user data');
+                    return;
+                }
+                const user = await response.json();
+
+                // Load usernames dropdown first
+                await loadUsernamesDropdown();
+
+                // Fill form
+                document.getElementById('modalTitle').textContent = 'Edit User';
+                document.getElementById('editMode').value = 'true';
+                document.getElementById('originalIP').value = ip;
+                document.getElementById('ipInput').value = user.ip;
+                document.getElementById('macInput').value = user.mac;
+                document.getElementById('nameInput').value = user.name || '';
+                document.getElementById('quotaInput').value = user.quota_mb || 0;
+                document.getElementById('telegramInput').value = user.telegram_chat_id || '';
+                document.getElementById('submitBtn').textContent = 'Save Changes';
+
+                // Handle username - populate both dropdown and input
+                const usernameSelect = document.getElementById('usernameSelect');
+                const usernameInput = document.getElementById('usernameInput');
+
+                if (user.username && user.username !== '-' && user.username !== '') {
+                    // User has a username - set dropdown AND input
+                    usernameSelect.value = user.username;
+                    usernameInput.value = user.username;
+                    usernameInput.disabled = true; // Disable input when dropdown is selected
+                } else {
+                    // No username - clear both
+                    usernameSelect.value = '';
+                    usernameInput.value = '';
+                    usernameInput.disabled = false;
+                }
+
+                // Detect identifier type (IP or MAC based)
+                const isIPBased = user.mac === '00:00:00:00:00:00' || user.mac === '';
+                const isMACBased = user.ip === '0.0.0.0' || user.ip === '';
+
+                // Set identifier type dropdown
+                if (isMACBased) {
+                    document.getElementById('identifierType').value = 'mac';
+                } else {
+                    document.getElementById('identifierType').value = 'ip';
+                }
+
+                // Show all device fields
+                document.getElementById('identifierType').closest('.mb-4').style.display = 'block';
+                document.getElementById('nameInput').closest('.mb-4').style.display = 'block';
+                document.getElementById('usernameInput').closest('.mb-4').style.display = 'block';
+                document.getElementById('quotaInput').closest('.mb-4').style.display = 'block';
+                document.getElementById('telegramInput').closest('.mb-4').style.display = 'block';
+
+                // Show only the relevant identifier field
+                if (isMACBased) {
+                    document.getElementById('ipField').style.display = 'none';
+                    document.getElementById('macField').style.display = 'block';
+                } else {
+                    document.getElementById('ipField').style.display = 'block';
+                    document.getElementById('macField').style.display = 'none';
+                }
+
+                // HIDE group fields in individual device edit mode
+                // (Use "Edit Group" button to edit group settings)
+                document.getElementById('groupQuotaField').style.display = 'none';
+                document.getElementById('groupTelegramField').style.display = 'none';
+
+                // Disable identifier type change in edit mode
+                document.getElementById('identifierType').disabled = true;
+                document.getElementById('ipInput').disabled = true;
+                document.getElementById('macInput').disabled = true;
+
+                document.getElementById('addUserModal').classList.remove('hidden');
+            } catch (error) {
+                console.error('Failed to load user:', error);
+                alert('Failed to load user');
+            }
+        }
+
+        async function editGroup(username) {
+            try {
+                // Get all users with this username
+                const response = await fetch(`${API_BASE}/api/users`);
+                const users = await response.json();
+
+                // Find first user in this group
+                const groupUsers = users.filter(u => u.username === username);
+                if (groupUsers.length === 0) {
+                    alert('Group not found');
+                    return;
+                }
+
+                const firstUser = groupUsers[0];
+
+                // Set form mode and title
+                document.getElementById('modalTitle').textContent = `Edit Group: ${username}`;
+                document.getElementById('editMode').value = 'group';
+                document.getElementById('originalIP').value = username; // Use username as identifier
+
+                // Fill group settings (only these are editable)
+                document.getElementById('groupQuotaInput').value = firstUser.group_quota_mb || 0;
+                document.getElementById('groupTelegramInput').value = firstUser.group_telegram_chat_id || '';
+
+                // Hide ALL device-specific fields
+                document.getElementById('identifierType').closest('.mb-4').style.display = 'none';
+                document.getElementById('ipField').style.display = 'none';
+                document.getElementById('macField').style.display = 'none';
+                document.getElementById('nameInput').closest('.mb-4').style.display = 'none';
+                document.getElementById('usernameInput').closest('.mb-4').style.display = 'none';
+                document.getElementById('quotaInput').closest('.mb-4').style.display = 'none';
+                document.getElementById('telegramInput').closest('.mb-4').style.display = 'none';
+
+                // Show ONLY group fields
+                document.getElementById('groupQuotaField').style.display = 'block';
+                document.getElementById('groupTelegramField').style.display = 'block';
+
+                document.getElementById('submitBtn').textContent = 'Save Group Settings';
+
+                // Show information banner
+                const infoMsg = document.createElement('div');
+                infoMsg.id = 'groupEditInfo';
+                infoMsg.className = 'bg-blue-50 border border-blue-200 rounded p-3 mb-4';
+                infoMsg.innerHTML = `
+                    <p class="text-sm text-blue-800">
+                        📝 Editing group: <strong>${username}</strong> (${groupUsers.length} device${groupUsers.length > 1 ? 's' : ''})<br>
+                        Changes will apply to all devices in this group.
+                    </p>
+                `;
+
+                const form = document.getElementById('addUserForm');
+                const existingInfo = document.getElementById('groupEditInfo');
+                if (existingInfo) existingInfo.remove();
+                form.prepend(infoMsg);
+
+                document.getElementById('addUserModal').classList.remove('hidden');
+            } catch (error) {
+                console.error('Failed to load group:', error);
+                alert('Failed to load group');
+            }
+        }
+
+        async function toggleBlock(ip, shouldBlock) {
+            const action = shouldBlock ? 'deactivate' : 'activate';
+            if (!confirm(`Are you sure you want to ${action} user ${ip}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${ip}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_blocked: shouldBlock })
+                });
+
+                if (response.ok) {
+                    loadUsers();
+                    loadStats();
+                } else {
+                    alert(`Failed to ${action} user`);
+                }
+            } catch (error) {
+                console.error(`Failed to ${action} user:`, error);
+                alert(`Failed to ${action} user`);
+            }
+        }
+
+        async function deleteUser(ip) {
+            if (!confirm(`Are you sure you want to delete user ${ip}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${ip}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    loadUsers();
+                    loadStats();
+                } else {
+                    alert('Failed to delete user');
+                }
+            } catch (error) {
+                console.error('Failed to delete user:', error);
+                alert('Failed to delete user');
+            }
+        }
+
+        async function showDHCPModal() {
+            document.getElementById('dhcpModal').classList.remove('hidden');
+            await loadDHCPClients();
+        }
+
+        function hideDHCPModal() {
+            document.getElementById('dhcpModal').classList.add('hidden');
+        }
+
+        async function loadDHCPClients() {
+            try {
+                const [leasesResponse, usersResponse] = await Promise.all([
+                    fetch(`${API_BASE}/api/dhcp-leases`),
+                    fetch(`${API_BASE}/api/users`)
+                ]);
+
+                const leases = await leasesResponse.json();
+                const users = await usersResponse.json();
+
+                // Create a set of existing user IPs for fast lookup
+                const existingIPs = new Set(users.map(u => u.ip));
+
+                const tbody = document.getElementById('dhcp-table-body');
+                tbody.innerHTML = '';
+
+                // Filter out already-added IPs
+                const availableLeases = leases.filter(lease => !existingIPs.has(lease.ip));
+
+                if (availableLeases.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">No new DHCP clients found (all already added)</td></tr>';
+                    return;
+                }
+
+                availableLeases.forEach(lease => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="px-4 py-2 text-sm">${lease.ip}</td>
+                        <td class="px-4 py-2 text-sm font-mono">${lease.mac}</td>
+                        <td class="px-4 py-2 text-sm">${lease.hostname}</td>
+                        <td class="px-4 py-2 text-sm text-gray-500">${lease.expires}</td>
+                        <td class="px-4 py-2 text-sm">
+                            <button onclick="addFromDHCP('${lease.ip}', '${lease.mac}', '${lease.hostname}')"
+                                    class="bg-blue-500 text-white px-3 py-1 rounded text-xs hover:bg-blue-600">
+                                Add User
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Failed to load DHCP clients:', error);
+                const tbody = document.getElementById('dhcp-table-body');
+                tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center text-red-500">Failed to load DHCP clients</td></tr>';
+            }
+        }
+
+        function addFromDHCP(ip, mac, hostname) {
+            hideDHCPModal();
+            showAddUserModal();
+
+            // Pre-fill the form with DHCP data
+            document.getElementById('identifierType').value = 'ip';
+            toggleIdentifierInputs();
+
+            // Set values AFTER toggle
+            document.getElementById('ipInput').value = ip;
+            document.getElementById('macInput').value = mac; // This needs to be set even if hidden
+            document.getElementById('nameInput').value = hostname;
+            document.getElementById('quotaInput').value = 1024; // Default 1GB
+        }
+
+        // Bot type change handler
+        function handleBotTypeChange() {
+            const botType = document.getElementById('setting_bot_type').value;
+            const customAPIField = document.getElementById('custom_api_field');
+            const botTokenHelp = document.getElementById('bot_token_help');
+            const adminChatIDHelp = document.getElementById('admin_chat_id_help');
+
+            // Show/hide custom API field
+            if (botType === 'custom') {
+                customAPIField.style.display = 'block';
+            } else {
+                customAPIField.style.display = 'none';
+            }
+
+            // Update help links based on bot type
+            if (botType === 'telegram') {
+                botTokenHelp.innerHTML = 'Get from <a href="https://t.me/botfather" target="_blank" class="text-blue-600 hover:underline">@BotFather</a>';
+                adminChatIDHelp.innerHTML = 'Get from <a href="https://t.me/userinfobot" target="_blank" class="text-blue-600 hover:underline">@userinfobot</a>';
+            } else if (botType === 'bale') {
+                botTokenHelp.innerHTML = 'Get from <a href="https://ble.ir/fa/dev" target="_blank" class="text-blue-600 hover:underline">Bale Developer Panel</a>';
+                adminChatIDHelp.innerHTML = 'Get from <a href="https://ble.ir/@userinfobot" target="_blank" class="text-blue-600 hover:underline">@userinfobot on Bale</a>';
+            } else {
+                botTokenHelp.innerHTML = 'Telegram-compatible bot token';
+                adminChatIDHelp.innerHTML = 'Admin chat ID for your custom bot';
+            }
+        }
+
+        // Settings functions
+        async function loadSettings() {
+            try {
+                const response = await fetch(`${API_BASE}/api/config`);
+                const config = await response.json();
+
+                // Populate form fields
+                document.getElementById('setting_check_interval').value = config.check_interval || 60;
+                document.getElementById('setting_web_port').value = config.web_port || 8080;
+                document.getElementById('setting_reset_schedule').value = config.reset_schedule || 'monthly';
+
+                // Bot settings - support both new and old fields
+                document.getElementById('setting_bot_type').value = config.bot_type || 'telegram';
+                document.getElementById('setting_bot_token').value = config.bot_token || config.telegram_bot_token || '';
+                document.getElementById('setting_bot_api_base_url').value = config.bot_api_base_url || '';
+                document.getElementById('setting_admin_chat_id').value = config.admin_chat_id || config.telegram_admin_chat_id || '';
+
+                document.getElementById('setting_data_dir').value = config.data_dir || '/etc/oqm';
+                document.getElementById('setting_log_file').value = config.log_file || '/var/log/oqm.log';
+
+                // Update UI based on bot type
+                handleBotTypeChange();
+            } catch (error) {
+                console.error('Failed to load settings:', error);
+            }
+        }
+
+        function showSettingsModal() {
+            document.getElementById('settingsModal').classList.remove('hidden');
+            loadSettings(); // Refresh settings when modal opens
+        }
+
+        function hideSettingsModal() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        async function saveSettings(event) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+
+            const settings = {
+                check_interval: parseInt(formData.get('check_interval')),
+                web_port: parseInt(formData.get('web_port')),
+                reset_schedule: formData.get('reset_schedule'),
+                bot_type: formData.get('bot_type'),
+                bot_token: formData.get('bot_token'),
+                bot_api_base_url: formData.get('bot_api_base_url'),
+                admin_chat_id: formData.get('admin_chat_id'),
+                data_dir: formData.get('data_dir'),
+                log_file: formData.get('log_file')
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/api/config`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                if (response.ok) {
+                    alert('✅ Settings saved successfully!\n\n⚠️ Note: Daemon needs to be restarted for some changes to take effect.');
+                    hideSettingsModal();
+                } else {
+                    const error = await response.json();
+                    alert(`Error: ${error.error}`);
+                }
+            } catch (error) {
+                console.error('Failed to save settings:', error);
+                alert('Failed to save settings');
+            }
+        }
+
+        async function testBotConnection() {
+            const btn = document.getElementById('testBotBtn');
+            const originalHTML = btn.innerHTML;
+
+            // Check if fields are filled
+            const botToken = document.getElementById('setting_bot_token').value;
+            const chatID = document.getElementById('setting_admin_chat_id').value;
+
+            if (!botToken || !chatID) {
+                alert('⚠️ Please fill in both Bot Token and Admin Chat ID before testing.');
+                return;
+            }
+
+            // Show loading state
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-spin">⟳</span> <span>Sending...</span>';
+
+            try {
+                // First save the settings
+                const settings = {
+                    check_interval: parseInt(document.getElementById('setting_check_interval').value),
+                    web_port: parseInt(document.getElementById('setting_web_port').value),
+                    reset_schedule: document.getElementById('setting_reset_schedule').value,
+                    bot_type: document.getElementById('setting_bot_type').value,
+                    bot_token: botToken,
+                    bot_api_base_url: document.getElementById('setting_bot_api_base_url').value,
+                    admin_chat_id: chatID,
+                    data_dir: document.getElementById('setting_data_dir').value,
+                    log_file: document.getElementById('setting_log_file').value
+                };
+
+                await fetch(`${API_BASE}/api/config`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                // Then test the connection
+                const response = await fetch(`${API_BASE}/api/test-telegram`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert('✅ ' + result.message);
+                } else {
+                    alert('❌ Test failed: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Failed to test bot connection:', error);
+                alert('❌ Failed to test bot connection');
+            } finally {
+                // Restore button
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
+        }
+
+        async function resetAllUsage() {
+            if (!confirm('⚠️ Are you sure you want to reset usage for ALL users?\n\nThis will:\n- Reset all usage counters to 0\n- Unblock all blocked users\n- Clear nftables counters\n\nThis action cannot be undone!')) {
+                return;
+            }
+
+            try {
+                // Call reset-usage API (we need to add this endpoint)
+                const response = await fetch(`${API_BASE}/api/reset-all`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    alert('✅ All user usage has been reset!');
+                    loadUsers();
+                    loadStats();
+                } else {
+                    alert('Failed to reset usage. Please use CLI: oqm reset-usage --all');
+                }
+            } catch (error) {
+                console.error('Failed to reset usage:', error);
+                alert('Failed to reset usage. Please use CLI: oqm reset-usage --all');
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>

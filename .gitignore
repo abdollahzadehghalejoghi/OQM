@@ -1,0 +1,47 @@
+# Binaries
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+oqm
+oqm-*
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files
+*.json.bak
+data.json
+/etc/oqm/
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+tmp/
+
+# Documentation drafts (not for release)
+docs/
