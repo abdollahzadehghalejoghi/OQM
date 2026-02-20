@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/abdollahzadehghalejoghi/oqm/internal/nft"
+	"github.com/abdollahzadehghalejoghi/oqm/internal/notify"
 	"github.com/abdollahzadehghalejoghi/oqm/internal/storage"
 	"github.com/abdollahzadehghalejoghi/oqm/pkg/config"
 	"github.com/abdollahzadehghalejoghi/oqm/pkg/logger"
@@ -417,25 +418,77 @@ func NewResetUsageCommand() *cobra.Command {
 
 			nftMgr := nft.NewManager(store.GetConfig().NFTablesTable)
 
+			// Create notifier if configured
+			cfg := store.GetConfig()
+			var notifier *notify.TelegramNotifier
+			if cfg.BotToken != "" && cfg.AdminChatID != "" {
+				baseURL := ""
+				if cfg.BotType == "bale" {
+					baseURL = "https://tapi.bale.ai"
+				}
+				notifier, err = notify.NewTelegramNotifier(cfg.BotToken, cfg.AdminChatID, baseURL)
+				if err != nil {
+					logger.Error("Failed to create notifier: %v", err)
+					// Continue without notifier
+				}
+			}
+
 			if all {
 				// Reset all users
 				users := store.GetAllUsers()
 				for _, u := range users {
 					nftMgr.ResetCounter(u.IP)
+
+					// Send individual user notification
+					if notifier != nil {
+						chatID := u.TelegramChatID
+						if chatID == "" && u.GroupTelegramChatID != "" {
+							chatID = u.GroupTelegramChatID
+						}
+						if err := notifier.NotifyUserReset(u.Name, u.IP, chatID); err != nil {
+							logger.Error("Failed to send reset notification to %s: %v", u.Name, err)
+						}
+					}
 				}
 				if err := store.ResetAllUsage(); err != nil {
 					return err
 				}
+
+				// Send system notification for all reset
+				if notifier != nil {
+					if err := notifier.NotifySystemEvent(fmt.Sprintf("Manual reset completed - %d users reset", len(users))); err != nil {
+						logger.Error("Failed to send system notification: %v", err)
+					}
+				}
+
 				fmt.Println("Usage reset for all users")
 			} else {
 				if ip == "" {
 					return fmt.Errorf("--ip or --all is required")
 				}
 
+				// Get user info for notification
+				user, err := store.GetUser(ip)
+				if err != nil {
+					return err
+				}
+
 				nftMgr.ResetCounter(ip)
 				if err := store.ResetUserUsage(ip); err != nil {
 					return err
 				}
+
+				// Send notification for single user reset
+				if notifier != nil && user != nil {
+					chatID := user.TelegramChatID
+					if chatID == "" && user.GroupTelegramChatID != "" {
+						chatID = user.GroupTelegramChatID
+					}
+					if err := notifier.NotifyUserReset(user.Name, user.IP, chatID); err != nil {
+						logger.Error("Failed to send reset notification: %v", err)
+					}
+				}
+
 				fmt.Printf("Usage reset for %s\n", ip)
 			}
 

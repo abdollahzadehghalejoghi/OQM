@@ -390,6 +390,21 @@ func (s *Server) handleResetAll(w http.ResponseWriter, r *http.Request) {
 	cfg := s.storage.GetConfig()
 	nftMgr := nft.NewManager(cfg.NFTablesTable)
 
+	// Create notifier if configured
+	var notifier *notify.TelegramNotifier
+	if cfg.BotToken != "" && cfg.AdminChatID != "" {
+		baseURL := ""
+		if cfg.BotType == "bale" {
+			baseURL = "https://tapi.bale.ai"
+		}
+		var err error
+		notifier, err = notify.NewTelegramNotifier(cfg.BotToken, cfg.AdminChatID, baseURL)
+		if err != nil {
+			logger.Error("Failed to create notifier: %v", err)
+			// Continue without notifier
+		}
+	}
+
 	// Get all users to reset their counters in nftables
 	users := s.storage.GetAllUsers()
 	for _, user := range users {
@@ -403,6 +418,17 @@ func (s *Server) handleResetAll(w http.ResponseWriter, r *http.Request) {
 			logger.Error("Failed to reset nftables counter for %s: %v", user.IP, err)
 			// Continue with other users even if one fails
 		}
+
+		// Send individual user notification
+		if notifier != nil {
+			chatID := user.TelegramChatID
+			if chatID == "" && user.GroupTelegramChatID != "" {
+				chatID = user.GroupTelegramChatID
+			}
+			if err := notifier.NotifyUserReset(user.Name, user.IP, chatID); err != nil {
+				logger.Error("Failed to send reset notification to %s: %v", user.Name, err)
+			}
+		}
 	}
 
 	// Reset all users in storage
@@ -415,6 +441,13 @@ func (s *Server) handleResetAll(w http.ResponseWriter, r *http.Request) {
 	if err := s.storage.Save(); err != nil {
 		s.errorResponse(w, "Failed to save", http.StatusInternalServerError)
 		return
+	}
+
+	// Send system notification for all reset
+	if notifier != nil {
+		if err := notifier.NotifySystemEvent(fmt.Sprintf("Manual reset completed - %d users reset", len(users))); err != nil {
+			logger.Error("Failed to send system notification: %v", err)
+		}
 	}
 
 	s.jsonResponse(w, map[string]string{

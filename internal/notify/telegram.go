@@ -144,6 +144,34 @@ func (t *TelegramNotifier) NotifySystemEvent(event string) error {
 	return t.SendToAdmin(message)
 }
 
+// NotifyUserReset sends notification when a user's usage is reset
+func (t *TelegramNotifier) NotifyUserReset(name, ip, userChatID string) error {
+	message := fmt.Sprintf(
+		"🔄 *Usage Reset*\n\n"+
+			"User: `%s`\n"+
+			"IP: `%s`\n\n"+
+			"Your usage has been reset. You now have full quota available.",
+		name, ip,
+	)
+
+	// Send to user if they have a chat ID
+	if userChatID != "" {
+		if err := t.SendToUser(userChatID, message); err != nil {
+			return err
+		}
+	}
+
+	// Also notify admin
+	adminMsg := fmt.Sprintf(
+		"🔄 *User Reset*\n\n"+
+			"User: `%s`\n"+
+			"IP: `%s`\n\n"+
+			"Usage has been reset.",
+		name, ip,
+	)
+	return t.SendToAdmin(adminMsg)
+}
+
 // FormatUsageReport formats a usage report for multiple users
 func FormatUsageReport(users []UserUsage) string {
 	var sb strings.Builder

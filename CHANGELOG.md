@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-21
+
+### Added
+- 🔔 **Reset Notifications**: Send notifications to users and admin when usage is reset
+  - Manual reset via CLI (`oqm reset-usage`) now sends notifications
+  - Manual reset via Web UI now sends notifications
+  - Scheduled monthly reset sends notifications to affected users
+  - Individual user notifications sent to their Telegram/Bale chat ID
+  - Admin receives system event notification with reset summary
+- 📊 **Reset Tracking**: New notification method `NotifyUserReset` for user-specific reset alerts
+
+### Fixed
+- ✅ **Quota Warning Spam Prevention**: 80% quota warning now only sent once
+  - Added `DeviceWarningNotificationSent` flag to track device quota warnings
+  - Added `GroupWarningNotificationSent` flag to track group quota warnings
+  - Warning flags automatically reset when usage drops below 80%
+  - Warning flags reset when usage is manually or automatically reset
+  - Prevents duplicate notifications during monitoring loops
+- ✅ **Individual User Quota Check**: Fixed quota checking for users with username but no group quota
+  - Individual users with username field now properly checked for device quota
+  - Users without group quota no longer skipped in quota checks
+- ✅ **NFTables Cleanup on Delete**: Deleted users now properly removed from nftables
+  - User IPs removed from nftables monitoring sets when deleted
+  - Prevents orphaned entries in nftables after user deletion
+
+### Technical Details
+- **Storage**: Added `device_warning_notification_sent` and `group_warning_notification_sent` fields to User model
+- **Notifications**: Enhanced notification system to support individual user reset alerts
+- **Daemon**: Improved quota monitoring logic to track notification state
+- **Backward Compatible**: New fields are optional and default to false for existing users
+
 ## [1.0.0] - 2026-02-16
 
 ### Added

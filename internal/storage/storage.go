@@ -207,6 +207,8 @@ func (s *Storage) ResetUserUsage(ip string) error {
 		u.RxBytes = 0
 		u.TxBytes = 0
 		u.IsBlocked = false
+		u.DeviceWarningNotificationSent = false
+		u.GroupWarningNotificationSent = false
 	})
 }
 
@@ -219,6 +221,8 @@ func (s *Storage) ResetAllUsage() error {
 		u.RxBytes = 0
 		u.TxBytes = 0
 		u.IsBlocked = false
+		u.DeviceWarningNotificationSent = false
+		u.GroupWarningNotificationSent = false
 		u.UpdatedAt = time.Now()
 	}
 

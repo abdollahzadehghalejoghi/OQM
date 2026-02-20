@@ -441,7 +441,23 @@ func (d *Daemon) checkQuota(user *storage.User) {
 		deviceExceeded := user.IsQuotaExceeded()
 
 		if deviceUsagePercent >= 80 && deviceUsagePercent < 100 {
-			d.sendQuotaWarning(user, deviceUsagePercent, "device")
+			// Only send warning if not already sent
+			if !user.DeviceWarningNotificationSent {
+				d.sendQuotaWarning(user, deviceUsagePercent, "device")
+				// Mark as sent
+				d.storage.UpdateUser(user.IP, func(u *storage.User) {
+					u.DeviceWarningNotificationSent = true
+				})
+				d.storage.Save()
+			}
+		} else if deviceUsagePercent < 80 {
+			// Reset warning flag if usage drops below threshold
+			if user.DeviceWarningNotificationSent {
+				d.storage.UpdateUser(user.IP, func(u *storage.User) {
+					u.DeviceWarningNotificationSent = false
+				})
+				d.storage.Save()
+			}
 		}
 
 		if deviceExceeded {
@@ -468,7 +484,27 @@ func (d *Daemon) checkQuota(user *storage.User) {
 		logger.Debug("Group %s: %.2f%% of %d MB (total: %d bytes)", user.Username, groupUsagePercent, user.GroupQuotaMB, totalBytes)
 
 		if groupUsagePercent >= 80 && groupUsagePercent < 100 {
-			d.sendGroupQuotaWarning(user.Username, groupUsers, groupUsagePercent)
+			// Only send warning if not already sent (check first user in group)
+			if len(groupUsers) > 0 && !groupUsers[0].GroupWarningNotificationSent {
+				d.sendGroupQuotaWarning(user.Username, groupUsers, groupUsagePercent)
+				// Mark as sent for all users in group
+				for _, u := range groupUsers {
+					d.storage.UpdateUser(u.IP, func(usr *storage.User) {
+						usr.GroupWarningNotificationSent = true
+					})
+				}
+				d.storage.Save()
+			}
+		} else if groupUsagePercent < 80 {
+			// Reset warning flag if usage drops below threshold
+			if len(groupUsers) > 0 && groupUsers[0].GroupWarningNotificationSent {
+				for _, u := range groupUsers {
+					d.storage.UpdateUser(u.IP, func(usr *storage.User) {
+						usr.GroupWarningNotificationSent = false
+					})
+				}
+				d.storage.Save()
+			}
 		}
 
 		if groupExceeded {
@@ -747,6 +783,17 @@ func (d *Daemon) resetAllUsers() {
 				logger.Error("Failed to unblock %s: %v", u.IP, err)
 			}
 		}
+
+		// Send individual user notification
+		if d.notifier != nil {
+			chatID := u.TelegramChatID
+			if chatID == "" && u.GroupTelegramChatID != "" {
+				chatID = u.GroupTelegramChatID
+			}
+			if err := d.notifier.NotifyUserReset(u.Name, u.IP, chatID); err != nil {
+				logger.Error("Failed to send reset notification to %s: %v", u.Name, err)
+			}
+		}
 	}
 
 	// Reset in storage
@@ -759,7 +806,7 @@ func (d *Daemon) resetAllUsers() {
 
 	logger.Info("Reset completed for all users")
 
-	// Send notification
+	// Send system notification
 	if d.notifier != nil {
 		d.notifier.NotifySystemEvent(fmt.Sprintf("Scheduled reset completed - %d users reset", len(users)))
 	}

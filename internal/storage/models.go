@@ -17,6 +17,8 @@ type User struct {
 	IsBlocked      bool      `json:"is_blocked"`
 	TelegramChatID string    `json:"telegram_chat_id,omitempty"` // Per-device notification
 	GroupTelegramChatID string `json:"group_telegram_chat_id,omitempty"` // Group notification (shared)
+	DeviceWarningNotificationSent bool `json:"device_warning_notification_sent,omitempty"` // Track if device quota warning was sent
+	GroupWarningNotificationSent  bool `json:"group_warning_notification_sent,omitempty"`  // Track if group quota warning was sent
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
