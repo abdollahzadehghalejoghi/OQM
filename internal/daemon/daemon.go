@@ -604,7 +604,7 @@ func (d *Daemon) blockUser(user *storage.User, reason string) {
 
 		// Send to device
 		if chatID != "" {
-			err := d.notifier.NotifyQuotaExceeded(user.Name, user.IP, chatID)
+			err := d.notifier.NotifyQuotaExceeded(user.Name, user.IP, chatID, user.TotalMB(), float64(user.QuotaMB))
 			if err != nil {
 				logger.Error("Failed to send quota exceeded notification: %v", err)
 			}
@@ -612,7 +612,7 @@ func (d *Daemon) blockUser(user *storage.User, reason string) {
 
 		// ALSO send to admin
 		if cfg.AdminChatID != "" && cfg.AdminChatID != chatID {
-			err := d.notifier.NotifyQuotaExceeded(user.Name+" (device)", user.IP, cfg.AdminChatID)
+			err := d.notifier.NotifyQuotaExceeded(user.Name+" (device)", user.IP, cfg.AdminChatID, user.TotalMB(), float64(user.QuotaMB))
 			if err != nil {
 				logger.Error("Failed to send quota exceeded notification to admin: %v", err)
 			}
@@ -648,7 +648,8 @@ func (d *Daemon) unblockUser(user *storage.User, reason string) {
 
 		// Send to device
 		if chatID != "" {
-			message := fmt.Sprintf("✅ *Access Restored*\n\nUser: `%s`\nIP: `%s`\n\nYour internet access has been restored.", user.Name, user.IP)
+			message := fmt.Sprintf("✅ *Access Restored*\n\nUser: `%s`\nIP: `%s`\nUsed: `%.2f MB`\nQuota: `%.2f MB`\n\nYour internet access has been restored.",
+				user.Name, user.IP, user.TotalMB(), float64(user.QuotaMB))
 			err := d.notifier.SendToUser(chatID, message)
 			if err != nil {
 				logger.Error("Failed to send unblock notification: %v", err)
@@ -657,7 +658,8 @@ func (d *Daemon) unblockUser(user *storage.User, reason string) {
 
 		// ALSO send to admin
 		if cfg.AdminChatID != "" && cfg.AdminChatID != chatID {
-			message := fmt.Sprintf("✅ *User Unblocked*\n\nUser: `%s`\nIP: `%s`\n\nReason: %s", user.Name, user.IP, reason)
+			message := fmt.Sprintf("✅ *User Unblocked*\n\nUser: `%s`\nIP: `%s`\nUsed: `%.2f MB`\nQuota: `%.2f MB`\n\nReason: %s",
+				user.Name, user.IP, user.TotalMB(), float64(user.QuotaMB), reason)
 			err := d.notifier.SendToAdmin(message)
 			if err != nil {
 				logger.Error("Failed to send unblock notification to admin: %v", err)
@@ -699,6 +701,13 @@ func (d *Daemon) blockGroup(username string, groupUsers []*storage.User) {
 		cfg := d.storage.GetConfig()
 		firstUser := groupUsers[0]
 
+		// Calculate total group usage
+		var totalBytes int64
+		for _, u := range groupUsers {
+			totalBytes += u.TotalBytes()
+		}
+		totalMB := float64(totalBytes) / 1024 / 1024
+
 		// Use GroupTelegramChatID if set
 		chatID := firstUser.GroupTelegramChatID
 		if chatID == "" {
@@ -710,7 +719,7 @@ func (d *Daemon) blockGroup(username string, groupUsers []*storage.User) {
 
 		// Send to group
 		if chatID != "" {
-			err := d.notifier.NotifyQuotaExceeded(username+" (group)", firstUser.IP, chatID)
+			err := d.notifier.NotifyQuotaExceeded(username+" (group)", firstUser.IP, chatID, totalMB, float64(firstUser.GroupQuotaMB))
 			if err != nil {
 				logger.Error("Failed to send group quota exceeded notification: %v", err)
 			}
@@ -718,7 +727,7 @@ func (d *Daemon) blockGroup(username string, groupUsers []*storage.User) {
 
 		// ALSO send to admin
 		if cfg.AdminChatID != "" && cfg.AdminChatID != chatID {
-			err := d.notifier.NotifyQuotaExceeded(username+" (group)", firstUser.IP, cfg.AdminChatID)
+			err := d.notifier.NotifyQuotaExceeded(username+" (group)", firstUser.IP, cfg.AdminChatID, totalMB, float64(firstUser.GroupQuotaMB))
 			if err != nil {
 				logger.Error("Failed to send group quota exceeded notification to admin: %v", err)
 			}

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.1.1] - 2026-02-22
+
+### Added
+- 📊 **Enhanced Block/Unblock Notifications**: Show used volume and quota in notifications
+  - Block notifications now display used MB and quota MB
+  - Unblock notifications now display used MB and quota MB
+  - Helps users understand exactly how much they've used and their limit
+  - Applies to both individual device and group quota notifications
+
+### Changed
+- 🔧 **Centralized Version Management**: Single source of truth for version number
+  - Created `VERSION` file to store current version
+  - Makefile now reads version from VERSION file
+  - Version properly injected at build time via ldflags
+  - OpenWrt Makefiles updated to use consistent version
+  - Ensures all components display the same version number
+
 ## [1.1.0] - 2026-02-21
 
 ### Added
@@ -15,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Individual user notifications sent to their Telegram/Bale chat ID
   - Admin receives system event notification with reset summary
 - 📊 **Reset Tracking**: New notification method `NotifyUserReset` for user-specific reset alerts
+- 📊 **Enhanced Block/Unblock Notifications**: Show used volume and quota in notifications
+  - Block notifications now display used MB and quota MB
+  - Unblock notifications now display used MB and quota MB
+  - Helps users understand exactly how much they've used and their limit
+  - Applies to both individual device and group quota notifications
 
 ### Fixed
 - ✅ **Quota Warning Spam Prevention**: 80% quota warning now only sent once

@@ -104,14 +104,16 @@ func (t *TelegramNotifier) NotifyQuotaWarning(name, ip, userChatID string, usage
 }
 
 // NotifyQuotaExceeded sends notification when quota is exceeded
-func (t *TelegramNotifier) NotifyQuotaExceeded(name, ip, userChatID string) error {
+func (t *TelegramNotifier) NotifyQuotaExceeded(name, ip, userChatID string, usedMB, quotaMB float64) error {
 	message := fmt.Sprintf(
 		"🚫 *Quota Exceeded*\n\n"+
 			"User: `%s`\n"+
-			"IP: `%s`\n\n"+
+			"IP: `%s`\n"+
+			"Used: `%.2f MB`\n"+
+			"Quota: `%.2f MB`\n\n"+
 			"Your internet access has been blocked due to quota limit.\n"+
 			"Please contact administrator to reset or increase your quota.",
-		name, ip,
+		name, ip, usedMB, quotaMB,
 	)
 
 	// Send to user if they have a chat ID
@@ -125,9 +127,11 @@ func (t *TelegramNotifier) NotifyQuotaExceeded(name, ip, userChatID string) erro
 	adminMsg := fmt.Sprintf(
 		"🚫 *User Blocked*\n\n"+
 			"User: `%s`\n"+
-			"IP: `%s`\n\n"+
+			"IP: `%s`\n"+
+			"Used: `%.2f MB`\n"+
+			"Quota: `%.2f MB`\n\n"+
 			"Quota exceeded - access blocked.",
-		name, ip,
+		name, ip, usedMB, quotaMB,
 	)
 	return t.SendToAdmin(adminMsg)
 }

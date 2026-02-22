@@ -1,6 +1,7 @@
 .PHONY: build clean install test cross-compile
 
-VERSION ?= 1.0.0
+# Read version from VERSION file
+VERSION := $(shell cat VERSION 2>/dev/null || echo "dev")
 BINARY_NAME = oqm
 BUILD_DIR = build
 
