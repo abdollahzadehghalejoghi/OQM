@@ -11,7 +11,7 @@ A powerful and lightweight quota management system for OpenWrt routers. Monitor 
 - 📊 **Real-time Traffic Monitoring** - Track upload/download for each user
 - 🎯 **Dual Quota System** - Device quota + Group quota (shared among devices)
 - 🚫 **Smart Auto-Block/Unblock** - Auto-block when quota exceeded, auto-unblock when quota increased
-- 📱 **Multi-Messenger Support** - Telegram & Bale notifications with dual-notification mode
+- 📱 **Smart Notifications** - Telegram & Bale support with detailed usage info (used MB, quota, warnings)
 - 🖥️ **Modern Web UI** - Beautiful dashboard with real-time stats and charts
 - 👥 **Multi-Device Grouping** - Group unlimited devices per user with shared quotas
 - 🆔 **Flexible User Tracking** - Track by IP address or MAC address (with ARP resolution)
@@ -402,6 +402,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 Give a ⭐️ if this project helped you!
 
 ## 📊 Roadmap
+
+### ✅ Completed (v1.1.1)
+- [x] **Enhanced block/unblock notifications** - Display used MB and quota MB
+- [x] **Centralized version management** - Single VERSION file for all components
+- [x] **Reset notifications** - Notify users when quota is reset
+- [x] **Quota warning spam prevention** - 80% warning sent only once
+- [x] **NFTables cleanup on delete** - Proper cleanup when users are removed
 
 ### ✅ Completed (v1.0.0)
 - [x] **User groups with shared quotas**
